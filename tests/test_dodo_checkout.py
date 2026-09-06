@@ -5,6 +5,7 @@ The Dodo Payments SDK call is mocked so the suite runs fully offline
 """
 
 import os
+import warnings
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -14,16 +15,17 @@ from dodopayments.types.product_item_req_param import ProductItemReqParam
 from dodopayments.types.price_param import OneTimePrice
 from fastapi.testclient import TestClient
 
-from app.dodo_service import (
-    MilestoneEscrowRequest,
-    _resolve_product_id,
-    create_escrow_checkout,
-)
-from app.state import milestones
-
-os.environ.setdefault("DODO_PAYMENTS_API_KEY", "test-key")
+# Env vars must be set BEFORE importing app.* (module-level client creation).
+os.environ.setdefault("DODO_PAYMENTS_API_KEY", "dodo_test_testkey")
 os.environ.setdefault("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
 
+from app.dodo_service import (  # noqa: E402  (needs env vars set first)
+    MilestoneEscrowRequest,
+    _resolve_product_id,
+    create_client,
+    create_escrow_checkout,
+)
+from app.state import milestones  # noqa: E402
 from app.main import app  # noqa: E402  (needs env vars set first)
 
 client = TestClient(app)
@@ -108,6 +110,27 @@ class TestResolveProductId:
         price = dodo.products.create.call_args.kwargs["price"]
         assert set(price) <= set(OneTimePrice.__annotations__)
         assert price["type"] == "one_time_price"
+
+
+class TestCreateClient:
+    def test_warns_when_api_key_missing(self, monkeypatch):
+        monkeypatch.delenv("DODO_PAYMENTS_API_KEY", raising=False)
+        monkeypatch.setenv("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
+        with pytest.warns(UserWarning, match="DODO_PAYMENTS_API_KEY is not set"):
+            create_client()
+
+    def test_warns_when_key_does_not_look_like_dodo(self, monkeypatch):
+        monkeypatch.setenv("DODO_PAYMENTS_API_KEY", "sk_test_placeholder.aaaa-bbbb")
+        monkeypatch.setenv("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
+        with pytest.warns(UserWarning, match="dodo_test_|dodo_live_"):
+            create_client()
+
+    def test_no_warning_with_test_mode_key(self, monkeypatch):
+        monkeypatch.setenv("DODO_PAYMENTS_API_KEY", "dodo_test_abc123")
+        monkeypatch.setenv("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            create_client()
 
 
 class TestCreateEscrowCheckout:

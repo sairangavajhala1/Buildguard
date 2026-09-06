@@ -12,6 +12,7 @@ local ``.env`` file when present):
 """
 
 import os
+import warnings
 
 from dotenv import load_dotenv
 from dodopayments import DodoPayments
@@ -32,9 +33,27 @@ class MilestoneEscrowRequest(BaseModel):
 
 
 def create_client() -> DodoPayments:
-    """Build the Dodo Payments SDK client from environment variables."""
+    """Build the Dodo Payments SDK client from environment variables.
+
+    Warns (rather than failing) when the API key is missing or does not look
+    like a Dodo key, so misconfigured credentials surface early instead of as
+    a bare HTTP 401 from the API.
+    """
+    api_key = os.environ.get("DODO_PAYMENTS_API_KEY", "")
+    if not api_key:
+        warnings.warn(
+            "DODO_PAYMENTS_API_KEY is not set; Dodo API calls will fail.",
+            stacklevel=2,
+        )
+    elif not api_key.startswith("dodo_"):
+        warnings.warn(
+            "DODO_PAYMENTS_API_KEY does not look like a Dodo Payments key "
+            "(Dodo test keys start with 'dodo_test_', live keys with "
+            "'dodo_live_').",
+            stacklevel=2,
+        )
     return DodoPayments(
-        bearer_token=os.environ.get("DODO_PAYMENTS_API_KEY", ""),
+        bearer_token=api_key,
         environment=os.environ.get("DODO_PAYMENTS_ENVIRONMENT", "test_mode"),
     )
 

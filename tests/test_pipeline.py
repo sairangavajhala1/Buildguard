@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.state import milestones
 
-os.environ.setdefault("DODO_PAYMENTS_API_KEY", "test-key")
+os.environ.setdefault("DODO_PAYMENTS_API_KEY", "dodo_test_testkey")
 os.environ.setdefault("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
 
 from app.main import app  # noqa: E402
