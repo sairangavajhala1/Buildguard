@@ -1,1 +1,1 @@
-"""Buildguard escrow backend package."""
+"""Buildguard application package: escrow backend, audit engine, CFO dashboard and HITL voice alerts."""

@@ -14,6 +14,10 @@ __pycache__/
 # Node (dodo-backend)
 node_modules/
 
+# Generated artifacts / voice alert audio
+output/
+alert_output.wav
+
 # OS / editor
 .DS_Store
 Thumbs.db
