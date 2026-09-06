@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Environment (secrets must never be committed)
+.env
+.env.*
+!.env.example
+
+# Node (dodo-backend)
+node_modules/
+
+# Generated artifacts / voice alert audio
+output/
+alert_output.wav
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
