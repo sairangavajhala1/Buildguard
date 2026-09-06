@@ -24,6 +24,10 @@ The server is configured through environment variables (see `.env.example`):
 | `PORT`     | `3000`    | Port the HTTP server listens on      |
 | `HOST`     | `127.0.0.1` | Bind address for the HTTP server   |
 | `LOG_LEVEL`| `info`    | Logging verbosity (`info`/`debug`)   |
+| `DODO_PAYMENTS_API_KEY` | — | API key for the dodo payments provider |
+
+> **Secrets:** Put real values in a local `.env` file (gitignored). Never paste
+> API keys into `.env.example` or anywhere else committed to the repo.
 
 ## API
 
@@ -36,6 +40,7 @@ The server is configured through environment variables (see `.env.example`):
 | `GET`  | `/api/v1/items/:id` | Fetch a single item                |
 | `PUT`  | `/api/v1/items/:id` | Update an item's name              |
 | `DELETE` | `/api/v1/items/:id` | Delete an item                    |
+| `GET`  | `/api/v1/payments/status` | Whether payments are configured |
 
 ## Layout
 
@@ -47,7 +52,8 @@ dodo-backend/
 │   ├── server.js        # bootstrap / listener
 │   └── routes/
 │       ├── health.js    # health endpoint
-│       └── items.js     # in-memory item CRUD
+│       ├── items.js     # in-memory item CRUD
+│       └── payments.js  # payment integration status
 └── test/
     └── app.test.js      # node:test suite (no extra deps)
 ```

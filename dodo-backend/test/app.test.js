@@ -91,3 +91,28 @@ test('unknown route returns 404', async () => {
   const res = await fetch(`${baseUrl}/api/v1/nope`);
   assert.equal(res.status, 404);
 });
+
+test('payments status endpoint never leaks the API key', async () => {
+  const res = await fetch(`${baseUrl}/api/v1/payments/status`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(typeof body.configured, 'boolean');
+  // The key (if configured) must never appear in any response body.
+  const { config } = await import('../src/config.js');
+  const key = config.payments.apiKey;
+  const serialized = JSON.stringify(body);
+  if (key) {
+    assert.equal(serialized.includes(key), false);
+  }
+  assert.equal(serialized.includes('sk_'), false);
+});
+
+test('config reads the payments API key from the environment', async () => {
+  process.env.DODO_PAYMENTS_API_KEY = 'sk_test_secret_value';
+  try {
+    const { config: fresh } = await import(`../src/config.js?key=${Date.now()}`);
+    assert.equal(fresh.payments.apiKey, 'sk_test_secret_value');
+  } finally {
+    delete process.env.DODO_PAYMENTS_API_KEY;
+  }
+});

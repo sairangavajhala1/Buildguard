@@ -1,6 +1,7 @@
 import express from 'express';
 import healthRouter from './routes/health.js';
 import itemsRouter from './routes/items.js';
+import paymentsRouter from './routes/payments.js';
 import { config } from './config.js';
 
 /**
@@ -32,6 +33,7 @@ export function createApp() {
 
   app.use('/health', healthRouter);
   app.use('/api/v1/items', itemsRouter);
+  app.use('/api/v1/payments', paymentsRouter);
 
   // 404 handler.
   app.use((req, res) => {
