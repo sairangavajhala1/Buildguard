@@ -7,8 +7,8 @@ local ``.env`` file when present):
 - ``DODO_PAYMENTS_API_KEY``: required; the Dodo Payments API key.
 - ``DODO_PAYMENTS_ENVIRONMENT``: optional; ``"test_mode"`` (default) or
   ``"live_mode"``.
-- ``DODO_PRODUCT_ID``: optional; the Dodo product used for escrow lines
-  (default ``"pdt_buildguard_escrow"``).
+- ``DODO_PRODUCT_ID``: optional; the Dodo product used for escrow lines. When
+  absent, an existing product is reused or a default one is created.
 """
 
 import os
@@ -42,9 +42,40 @@ def create_client() -> DodoPayments:
 # Module-level client used by `create_escrow_checkout`. Tests may patch this.
 client = create_client()
 
-# Product used for escrow line items. Override via env if the dashboard
-# product id differs from the default.
-DODO_PRODUCT_ID = os.getenv("DODO_PRODUCT_ID", "pdt_buildguard_escrow")
+
+def _resolve_product_id(dodo_client) -> str:
+    """Resolve the product id used for escrow cart line items.
+
+    Precedence:
+    1. The ``DODO_PRODUCT_ID`` env var, if set and non-empty.
+    2. The first existing product returned by ``client.products.list()``.
+    3. A freshly created default product ("Milestone Escrow").
+
+    Returns the resolved ``product_id`` string.
+    """
+    env_id = os.getenv("DODO_PRODUCT_ID")
+    if env_id and env_id.strip():
+        return env_id.strip()
+
+    products_page = dodo_client.products.list()
+    for product in getattr(products_page, "items", []) or []:
+        return product.product_id
+
+    created = dodo_client.products.create(
+        name="Milestone Escrow",
+        # Native SDK price shape: one-time price in USD cents ($100.00 = 10000).
+        # The SDK's `products.create` has no top-level `currency`/`type`
+        # kwargs; they live inside the `price` parameter.
+        price={
+            "type": "one_time_price",
+            "currency": "USD",
+            "price": 10000,
+            "discount": 0,
+        },
+        tax_category="digital_products",
+    )
+    return created.product_id
+
 
 # Note: the SDK's checkout-session endpoint names this kwarg `billing_address`
 # (there is no `billing` parameter on `checkout_sessions.create`).
@@ -64,12 +95,14 @@ def create_escrow_checkout(data: MilestoneEscrowRequest) -> dict:
 
     Returns ``{"checkout_url": ..., "session_id": ...}``.
     """
+    prod_id = _resolve_product_id(client)
     session = client.checkout_sessions.create(
         # `amount` is the line-item price in cents. Each line binds the escrow
-        # to the BuildGuard escrow product and records the contracted amount.
+        # to a real product id (env var, existing product, or default) and
+        # records the contracted amount.
         product_cart=[
             {
-                "product_id": DODO_PRODUCT_ID,
+                "product_id": prod_id,
                 "amount": int(data.amount_usd * 100),
                 "quantity": 1,
             }

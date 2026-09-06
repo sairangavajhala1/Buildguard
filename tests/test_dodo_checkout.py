@@ -6,13 +6,19 @@ The Dodo Payments SDK call is mocked so the suite runs fully offline
 
 import os
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from dodopayments.types.checkout_session_response import CheckoutSessionResponse
+from dodopayments.types.product_item_req_param import ProductItemReqParam
+from dodopayments.types.price_param import OneTimePrice
 from fastapi.testclient import TestClient
 
-from app.dodo_service import MilestoneEscrowRequest, create_escrow_checkout
+from app.dodo_service import (
+    MilestoneEscrowRequest,
+    _resolve_product_id,
+    create_escrow_checkout,
+)
 from app.state import milestones
 
 os.environ.setdefault("DODO_PAYMENTS_API_KEY", "test-key")
@@ -52,6 +58,58 @@ def make_session(payment_link="https://test.checkout.dodopayments.com/session/ck
     return SimpleNamespace(payment_link=payment_link, session_id=session_id)
 
 
+class TestResolveProductId:
+    def test_env_var_wins(self, monkeypatch):
+        monkeypatch.setenv("DODO_PRODUCT_ID", "pdt_from_env")
+        dodo = Mock()
+        assert _resolve_product_id(dodo) == "pdt_from_env"
+        dodo.products.list.assert_not_called()
+        dodo.products.create.assert_not_called()
+
+    def test_blank_env_var_falls_through(self, monkeypatch):
+        monkeypatch.setenv("DODO_PRODUCT_ID", "   ")
+        dodo = Mock()
+        dodo.products.list.return_value = SimpleNamespace(
+            items=[SimpleNamespace(product_id="pdt_existing")]
+        )
+        assert _resolve_product_id(dodo) == "pdt_existing"
+
+    def test_first_existing_product_used_when_env_unset(self, monkeypatch):
+        monkeypatch.delenv("DODO_PRODUCT_ID", raising=False)
+        dodo = Mock()
+        dodo.products.list.return_value = SimpleNamespace(
+            items=[
+                SimpleNamespace(product_id="pdt_first"),
+                SimpleNamespace(product_id="pdt_second"),
+            ]
+        )
+        assert _resolve_product_id(dodo) == "pdt_first"
+        dodo.products.create.assert_not_called()
+
+    def test_default_product_created_when_none_exist(self, monkeypatch):
+        monkeypatch.delenv("DODO_PRODUCT_ID", raising=False)
+        dodo = Mock()
+        dodo.products.list.return_value = SimpleNamespace(items=[])
+        dodo.products.create.return_value = SimpleNamespace(product_id="pdt_created")
+
+        assert _resolve_product_id(dodo) == "pdt_created"
+
+        dodo.products.create.assert_called_once_with(
+            name="Milestone Escrow",
+            price={
+                "type": "one_time_price",
+                "currency": "USD",
+                "price": 10000,
+                "discount": 0,
+            },
+            tax_category="digital_products",
+        )
+        # The price payload must be valid against the SDK's OneTimePrice shape.
+        price = dodo.products.create.call_args.kwargs["price"]
+        assert set(price) <= set(OneTimePrice.__annotations__)
+        assert price["type"] == "one_time_price"
+
+
 class TestCreateEscrowCheckout:
     @patch("app.dodo_service.client")
     def test_passes_expected_params(self, mock_client):
@@ -60,10 +118,11 @@ class TestCreateEscrowCheckout:
 
         result = create_escrow_checkout(request)
 
+        assert mock_client.products.list.call_count == 0  # env var short-circuits
         mock_client.checkout_sessions.create.assert_called_once_with(
             product_cart=[
                 {
-                    "product_id": "pdt_buildguard_escrow",
+                    "product_id": "pdt_test_escrow",
                     "amount": 1250050,
                     "quantity": 1,
                 }
@@ -93,21 +152,20 @@ class TestCreateEscrowCheckout:
         cart_item = mock_client.checkout_sessions.create.call_args.kwargs["product_cart"][0]
         assert cart_item["amount"] == 1250050
 
-    def test_product_id_reads_from_env(self, monkeypatch):
-        monkeypatch.setenv("DODO_PRODUCT_ID", "pdt_custom_escrow")
-        import importlib
+    @patch("app.dodo_service.client")
+    def test_checkout_uses_resolved_product_id(self, mock_client, monkeypatch):
+        """Without DODO_PRODUCT_ID, the resolved product flows into the cart."""
+        monkeypatch.delenv("DODO_PRODUCT_ID", raising=False)
+        mock_client.products.list.return_value = SimpleNamespace(
+            items=[SimpleNamespace(product_id="pdt_existing")]
+        )
+        mock_client.checkout_sessions.create.return_value = make_session()
 
-        from app import dodo_service
+        create_escrow_checkout(MilestoneEscrowRequest(**SAMPLE_REQUEST))
 
-        importlib.reload(dodo_service)
-        try:
-            assert dodo_service.DODO_PRODUCT_ID == "pdt_custom_escrow"
-            # Restore the default for other tests.
-            assert os.getenv("DODO_PRODUCT_ID") == "pdt_custom_escrow"
-        finally:
-            monkeypatch.delenv("DODO_PRODUCT_ID")
-            importlib.reload(dodo_service)
-            assert dodo_service.DODO_PRODUCT_ID == "pdt_buildguard_escrow"
+        cart_item = mock_client.checkout_sessions.create.call_args.kwargs["product_cart"][0]
+        assert cart_item["product_id"] == "pdt_existing"
+        mock_client.products.create.assert_not_called()
 
     def test_call_args_are_valid_for_the_real_sdk(self):
         """Guard against drift between our call and the SDK's typed API."""
@@ -119,10 +177,6 @@ class TestCreateEscrowCheckout:
             create_params = inspect.signature(CheckoutSessionsResource.create).parameters
         except ImportError:  # pragma: no cover - structure changed
             create_params = None
-
-        from dodopayments.types.product_item_req_param import ProductItemReqParam
-
-        valid_cart_keys = set(ProductItemReqParam.__annotations__)
 
         request = MilestoneEscrowRequest(**SAMPLE_REQUEST)
         with patch("app.dodo_service.client") as mock_client:
@@ -137,7 +191,9 @@ class TestCreateEscrowCheckout:
 
         # Cart item keys must be valid ProductItemReq fields.
         cart_keys = set(call_kwargs["product_cart"][0])
-        assert cart_keys <= valid_cart_keys, f"Invalid product_cart keys: {cart_keys - valid_cart_keys}"
+        assert cart_keys <= set(ProductItemReqParam.__annotations__), (
+            f"Invalid product_cart keys: {cart_keys - set(ProductItemReqParam.__annotations__)}"
+        )
 
         # The response mapping must be expressible with the real SDK types.
         real_response = CheckoutSessionResponse(
