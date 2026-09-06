@@ -1,27 +1,33 @@
 """Dodo Payments escrow integration service.
 
 Creates Dodo Payments checkout sessions that collect milestone escrow
-deposits. The client is configured from environment variables:
+deposits. The client is configured from environment variables (loaded from a
+local ``.env`` file when present):
 
 - ``DODO_PAYMENTS_API_KEY``: required; the Dodo Payments API key.
 - ``DODO_PAYMENTS_ENVIRONMENT``: optional; ``"test_mode"`` (default) or
   ``"live_mode"``.
+- ``DODO_PRODUCT_ID``: optional; the Dodo product used for escrow lines
+  (default ``"pdt_buildguard_escrow"``).
 """
 
 import os
 
+from dotenv import load_dotenv
 from dodopayments import DodoPayments
 from pydantic import BaseModel, Field
+
+load_dotenv()
 
 
 class MilestoneEscrowRequest(BaseModel):
     """Request payload for creating an escrow checkout session."""
 
-    project_id: str
-    milestone_id: str
+    project_id: str = ""
+    milestone_id: str = ""
     milestone_title: str
     amount_usd: float = Field(gt=0)
-    client_name: str
+    client_name: str = ""
     client_email: str
 
 
@@ -35,6 +41,10 @@ def create_client() -> DodoPayments:
 
 # Module-level client used by `create_escrow_checkout`. Tests may patch this.
 client = create_client()
+
+# Product used for escrow line items. Override via env if the dashboard
+# product id differs from the default.
+DODO_PRODUCT_ID = os.getenv("DODO_PRODUCT_ID", "pdt_buildguard_escrow")
 
 # Note: the SDK's checkout-session endpoint names this kwarg `billing_address`
 # (there is no `billing` parameter on `checkout_sessions.create`).
@@ -55,11 +65,11 @@ def create_escrow_checkout(data: MilestoneEscrowRequest) -> dict:
     Returns ``{"checkout_url": ..., "session_id": ...}``.
     """
     session = client.checkout_sessions.create(
-        # `amount` is the line-item price in cents. The SDK's product-cart item
-        # does not carry `currency`/`name`; currency is pinned via
-        # `billing_currency` and the milestone is identified via `metadata`.
+        # `amount` is the line-item price in cents. Each line binds the escrow
+        # to the BuildGuard escrow product and records the contracted amount.
         product_cart=[
             {
+                "product_id": DODO_PRODUCT_ID,
                 "amount": int(data.amount_usd * 100),
                 "quantity": 1,
             }

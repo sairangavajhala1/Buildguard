@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BuildGuard — Autonomous Office of the CFO</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 900: "#0f172a", 800: "#1e293b", 700: "#334155" },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-brand-900 text-white shadow-lg">
+    <div class="max-w-6xl mx-auto px-6 py-8">
+      <h1 class="text-3xl font-bold tracking-tight">BuildGuard — Autonomous Office of the CFO</h1>
+      <p class="mt-2 text-slate-300">Escrow deposits &amp; contractor compliance audits, end to end.</p>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8 space-y-8">
+
+    <!-- Section 1: Create Milestone Escrow -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <h2 class="text-xl font-semibold mb-4">1. Create Milestone Escrow</h2>
+      <form id="escrowForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Project Name</label>
+          <input id="projectName" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                 placeholder="e.g. Riverside Tower" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Milestone Title</label>
+          <input id="milestoneTitle" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                 placeholder="e.g. Foundation pour" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Escrow Amount (USD)</label>
+          <input id="amount" required type="number" min="0.01" step="0.01"
+                 class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                 placeholder="e.g. 12500.00" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Client Email</label>
+          <input id="clientEmail" required type="email"
+                 class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                 placeholder="client@example.com" />
+        </div>
+        <div class="md:col-span-2 flex items-center gap-3">
+          <button type="submit"
+                  class="rounded-lg bg-brand-800 px-5 py-2.5 font-medium text-white hover:bg-brand-700">
+            Create Escrow &amp; Generate Checkout Link
+          </button>
+          <span id="depositStatus" class="text-sm text-slate-500"></span>
+        </div>
+      </form>
+
+      <!-- Instant "Open Dodo Test Checkout" button (appears after deposit) -->
+      <div id="checkoutPanel" class="hidden mt-4 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
+        <p class="text-sm text-emerald-800 font-medium">Escrow checkout created.</p>
+        <a id="checkoutLink" href="#" target="_blank" rel="noopener"
+           class="mt-2 inline-block rounded-lg bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700">
+          Open Dodo Test Checkout
+        </a>
+      </div>
+    </section>
+
+    <!-- Section 2: Submit Contractor Invoice for Audit -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <h2 class="text-xl font-semibold mb-4">2. Submit Contractor Invoice for Audit</h2>
+      <form id="auditForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Milestone</label>
+          <select id="auditMilestone" required
+                  class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+            <option value="">— Select milestone —</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Billed Amount (USD)</label>
+          <input id="billedAmount" required type="number" min="0.01" step="0.01"
+                 class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Invoice Date</label>
+          <input id="invoiceDate" required type="date"
+                 class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Insurance Expiry Date</label>
+          <input id="insuranceExpiry" required type="date"
+                 class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+        </div>
+        <div class="md:col-span-2 flex items-center gap-3">
+          <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input id="safetyInspection" type="checkbox" class="h-4 w-4 rounded border-slate-300" checked />
+            Safety sign-off passed
+          </label>
+          <button type="submit"
+                  class="ml-auto rounded-lg bg-brand-800 px-5 py-2.5 font-medium text-white hover:bg-brand-700">
+            Run Compliance Audit
+          </button>
+        </div>
+      </form>
+      <div id="auditResult" class="hidden mt-4 rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm text-slate-700"></div>
+    </section>
+
+    <!-- Section 3: Active Milestones & Audit Ledger -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">3. Active Milestones &amp; Audit Ledger</h2>
+        <button id="refreshBtn"
+                class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          Refresh
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-slate-200 text-left text-slate-500">
+              <th class="py-2 pr-4 font-medium">Project / Milestone</th>
+              <th class="py-2 pr-4 font-medium">Contracted vs Billed</th>
+              <th class="py-2 pr-4 font-medium">Escrow Status</th>
+              <th class="py-2 pr-4 font-medium">Compliance Status</th>
+              <th class="py-2 pr-4 font-medium">Flagged Violations</th>
+              <th class="py-2 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="milestoneRows"></tbody>
+        </table>
+        <div id="emptyState" class="py-8 text-center text-slate-400">
+          No milestones yet — create an escrow to get started.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const fmtUSD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
+    let milestones = [];
+
+    // ---------------------------------------------------------------- helpers
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || res.statusText);
+      }
+      return res.json();
+    }
+
+    function todayISO(offsetYears = 0) {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() + offsetYears);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // ---------------------------------------------------------------- rendering
+    function escrowBadge(status) {
+      const cls =
+        status === "ESCROW_LOCKED"
+          ? "bg-blue-100 text-blue-700"
+          : "bg-gray-100 text-gray-600";
+      return `<span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}">${status}</span>`;
+    }
+
+    function auditBadge(status) {
+      const cls = {
+        APPROVED: "bg-green-100 text-green-700",
+        QUARANTINED: "bg-red-100 text-red-700",
+        SETTLED: "bg-emerald-100 text-emerald-700",
+        NOT_SUBMITTED: "bg-slate-100 text-slate-500",
+      }[status] || "bg-slate-100 text-slate-500";
+      return `<span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${cls}">${status}</span>`;
+    }
+
+    function renderMilestones() {
+      const tbody = $("#milestoneRows");
+      $("#emptyState").style.display = milestones.length ? "none" : "block";
+      tbody.innerHTML = milestones.map((m) => {
+        const billed = m.billed_amount == null ? "Not billed yet" : fmtUSD.format(m.billed_amount);
+        const violations = m.violations && m.violations.length
+          ? m.violations.map((v) => `<li class="text-red-700">${v}</li>`).join("")
+          : '<li class="text-slate-400">—</li>';
+
+        const actions = [];
+        actions.push(
+          `<button onclick="simulatePayment('${m.milestone_id}')" class="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">Simulate Payment Succeeded</button>`
+        );
+        if (m.audit_status === "QUARANTINED") {
+          actions.push(
+            `<button onclick="cfoApprove('${m.milestone_id}')" class="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">CFO Approve &amp; Release Escrow</button>`
+          );
+        }
+
+        return `<tr class="border-b border-slate-100 align-top">
+          <td class="py-3 pr-4">
+            <div class="font-medium">${m.milestone_title}</div>
+            <div class="text-xs text-slate-400">${m.project_id} · ${m.milestone_id}</div>
+          </td>
+          <td class="py-3 pr-4">
+            <div class="font-medium">${fmtUSD.format(m.contracted_amount)}</div>
+            <div class="text-xs ${m.billed_amount != null && m.billed_amount > m.contracted_amount ? "text-red-600" : "text-slate-400"}">${billed}</div>
+          </td>
+          <td class="py-3 pr-4">${escrowBadge(m.escrow_status)}</td>
+          <td class="py-3 pr-4">${auditBadge(m.audit_status)}</td>
+          <td class="py-3 pr-4"><ul class="space-y-0.5 text-xs">${violations}</ul></td>
+          <td class="py-3"><div class="flex flex-wrap gap-2">${actions.join("")}</div></td>
+        </tr>`;
+      }).join("");
+    }
+
+    function fillMilestoneSelect() {
+      const select = $("#auditMilestone");
+      select.innerHTML = '<option value="">— Select milestone —</option>' + milestones
+        .map((m) => `<option value="${m.milestone_id}">${m.milestone_title} (${m.milestone_id})</option>`)
+        .join("");
+    }
+
+    async function reloadMilestones() {
+      try {
+        const data = await api("/api/milestones");
+        milestones = data.milestones;
+        renderMilestones();
+        fillMilestoneSelect();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // ---------------------------------------------------------------- actions
+    async function simulatePayment(milestoneId) {
+      try {
+        await api(`/api/escrow/mock-confirm/${milestoneId}`, { method: "POST" });
+        await reloadMilestones();
+      } catch (err) {
+        alert("Simulate payment failed: " + err.message);
+      }
+    }
+
+    async function cfoApprove(milestoneId) {
+      try {
+        await api(`/api/milestone/cfo-approve/${milestoneId}`, { method: "POST" });
+        await reloadMilestones();
+      } catch (err) {
+        alert("CFO approval failed: " + err.message);
+      }
+    }
+
+    // ---------------------------------------------------------------- forms
+    $("#escrowForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("#depositStatus").textContent = "Creating checkout…";
+      try {
+        const data = await api("/api/escrow/deposit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // The dashboard's "Project Name" fulfills the Dodo customer name.
+            client_name: $("#projectName").value,
+            milestone_title: $("#milestoneTitle").value,
+            amount_usd: Number($("#amount").value),
+            client_email: $("#clientEmail").value,
+          }),
+        });
+        $("#checkoutLink").href = data.checkout_url;
+        $("#checkoutPanel").classList.remove("hidden");
+        $("#depositStatus").textContent = `Milestone ${data.milestone_id} saved as ESCROW_PENDING.`;
+        e.target.reset();
+        await reloadMilestones();
+      } catch (err) {
+        $("#depositStatus").textContent = "Error: " + err.message;
+      }
+    });
+
+    $("#auditForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const data = await api("/api/milestone/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            milestone_id: $("#auditMilestone").value,
+            billed_amount: Number($("#billedAmount").value),
+            invoice_date: $("#invoiceDate").value,
+            insurance_expiry_date: $("#insuranceExpiry").value,
+            safety_inspection_passed: $("#safetyInspection").checked,
+          }),
+        });
+        const verdict = data.status === "APPROVED"
+          ? `APPROVED — no violations.`
+          : `QUARANTINED — ${data.violations.join("; ")}`;
+        const box = $("#auditResult");
+        box.classList.remove("hidden");
+        box.textContent = `Milestone ${data.milestone_id}: ${verdict}`;
+        e.target.reset();
+        $("#invoiceDate").value = todayISO();
+        $("#insuranceExpiry").value = todayISO(1);
+        $("#billedAmount").value = "";
+        await reloadMilestones();
+      } catch (err) {
+        alert("Audit failed: " + err.message);
+      }
+    });
+
+    $("#refreshBtn").addEventListener("click", reloadMilestones);
+
+    // ---------------------------------------------------------------- init
+    $("#invoiceDate").value = todayISO();
+    $("#insuranceExpiry").value = todayISO(1);
+    reloadMilestones();
+  </script>
+</body>
+</html>

@@ -13,6 +13,7 @@ from dodopayments.types.checkout_session_response import CheckoutSessionResponse
 from fastapi.testclient import TestClient
 
 from app.dodo_service import MilestoneEscrowRequest, create_escrow_checkout
+from app.state import milestones
 
 os.environ.setdefault("DODO_PAYMENTS_API_KEY", "test-key")
 os.environ.setdefault("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
@@ -20,6 +21,13 @@ os.environ.setdefault("DODO_PAYMENTS_ENVIRONMENT", "test_mode")
 from app.main import app  # noqa: E402  (needs env vars set first)
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clean_state():
+    milestones.clear()
+    yield
+    milestones.clear()
 
 
 SAMPLE_REQUEST = {
@@ -55,6 +63,7 @@ class TestCreateEscrowCheckout:
         mock_client.checkout_sessions.create.assert_called_once_with(
             product_cart=[
                 {
+                    "product_id": "pdt_buildguard_escrow",
                     "amount": 1250050,
                     "quantity": 1,
                 }
@@ -83,6 +92,22 @@ class TestCreateEscrowCheckout:
 
         cart_item = mock_client.checkout_sessions.create.call_args.kwargs["product_cart"][0]
         assert cart_item["amount"] == 1250050
+
+    def test_product_id_reads_from_env(self, monkeypatch):
+        monkeypatch.setenv("DODO_PRODUCT_ID", "pdt_custom_escrow")
+        import importlib
+
+        from app import dodo_service
+
+        importlib.reload(dodo_service)
+        try:
+            assert dodo_service.DODO_PRODUCT_ID == "pdt_custom_escrow"
+            # Restore the default for other tests.
+            assert os.getenv("DODO_PRODUCT_ID") == "pdt_custom_escrow"
+        finally:
+            monkeypatch.delenv("DODO_PRODUCT_ID")
+            importlib.reload(dodo_service)
+            assert dodo_service.DODO_PRODUCT_ID == "pdt_buildguard_escrow"
 
     def test_call_args_are_valid_for_the_real_sdk(self):
         """Guard against drift between our call and the SDK's typed API."""
@@ -128,16 +153,42 @@ class TestCreateEscrowCheckout:
 
 class TestDepositEndpoint:
     @patch("app.dodo_service.client")
-    def test_deposit_endpoint_returns_checkout(self, mock_client):
+    def test_deposit_endpoint_returns_checkout_and_saves_milestone(self, mock_client):
         mock_client.checkout_sessions.create.return_value = make_session()
 
         response = client.post("/api/escrow/deposit", json=SAMPLE_REQUEST)
 
         assert response.status_code == 200
-        assert response.json() == {
-            "checkout_url": "https://test.checkout.dodopayments.com/session/cks_abc",
-            "session_id": "cks_abc",
+        body = response.json()
+        assert body["checkout_url"] == "https://test.checkout.dodopayments.com/session/cks_abc"
+        assert body["session_id"] == "cks_abc"
+        assert body["milestone_id"] == "ms_456"
+
+        saved = milestones["ms_456"]
+        assert saved["escrow_status"] == "ESCROW_PENDING"
+        assert saved["audit_status"] == "NOT_SUBMITTED"
+        assert saved["contracted_amount"] == SAMPLE_REQUEST["amount_usd"]
+        assert saved["checkout_url"] == body["checkout_url"]
+
+    @patch("app.dodo_service.client")
+    def test_deposit_endpoint_generates_ids_when_omitted(self, mock_client):
+        mock_client.checkout_sessions.create.return_value = make_session()
+        payload = {
+            "milestone_title": "Foundation pour",
+            "amount_usd": 5000,
+            "client_email": "jane@example.com",
         }
+
+        response = client.post("/api/escrow/deposit", json=payload)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["milestone_id"].startswith("ms_")
+        assert body["milestone_id"] in milestones
+        assert milestones[body["milestone_id"]]["project_id"].startswith("proj_")
+        # Generated ids flow into Dodo metadata.
+        metadata = mock_client.checkout_sessions.create.call_args.kwargs["metadata"]
+        assert metadata["milestone_id"] == body["milestone_id"]
 
     @patch("app.dodo_service.client")
     def test_deposit_endpoint_propagates_sdk_errors(self, mock_client):
@@ -147,6 +198,7 @@ class TestDepositEndpoint:
 
         assert response.status_code == 502
         assert "boom" in response.json()["detail"]
+        assert len(milestones) == 0  # nothing persisted on failure
 
     def test_deposit_endpoint_validates_payload(self):
         invalid = dict(SAMPLE_REQUEST, amount_usd=-5)
